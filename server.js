@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-import { pool } from "pg";
+import { Pool } from "pg";
 import passport from "passport";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -12,7 +12,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const pool = new pool({
+const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
@@ -22,7 +22,7 @@ const pool = new pool({
     rejectUnauthorized: false,
   },
 });
-db.connect((error) => {
+pool.connect((error) => {
   if (error) {
     console.log(error);
   } else {
@@ -76,7 +76,7 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         // Attempt to find user by googleId
-        const result = await db.query(
+        const result = await pool.query(
           "SELECT * FROM users WHERE google_id = $1",
           [profile.id]
         );
@@ -93,7 +93,7 @@ passport.use(
           user = result.rows[0]; // Found existing user
         } else {
           // Create new user
-          const insertResult = await db.query(
+          const insertResult = await pool.query(
             "INSERT INTO users (google_id, email, name) VALUES ($1, $2, $3) RETURNING *",
             [
               profile.id,
@@ -118,7 +118,7 @@ passport.serializeUser((user, done) => {
 });
 passport.deserializeUser(async (id, done) => {
   try {
-    const result = await db.query("SELECT * FROM users WHERE id = $1", [id]);
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
     const user = result.rows[0];
     done(null, user);
   } catch (err) {
@@ -195,7 +195,7 @@ app.get("/signIn", (req, res) => {
 
 app.get("/", ensureAuthenticated, async (req, res) => {
   try {
-    const result = await db.query(
+    const result = await pool.query(
       "SELECT * FROM tasks WHERE user_id = $1 AND is_completed = $2",
       [req.user.id, false]
     );
@@ -213,7 +213,7 @@ app.get("/", ensureAuthenticated, async (req, res) => {
 
 app.get("/user", ensureAuthenticated, async (req, res) => {
   try {
-    const result = await db.query("SELECT * FROM users WHERE id = $1", [
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [
       req.user.id,
     ]);
     const user = result.rows[0];
@@ -229,7 +229,7 @@ app.post("/add", ensureAuthenticated, (req, res) => {
   if (!title || !content) {
     return res.status(400).send("Title and content are required");
   }
-  db.query(
+  pool.query(
     "INSERT INTO tasks (title,content,user_id) VALUES ($1, $2, $3)",
     [title, content, req.user.id],
     (error, results) => {
@@ -245,7 +245,7 @@ app.post("/add", ensureAuthenticated, (req, res) => {
 
 app.get("/completed", ensureAuthenticated, async (req, res) => {
   try {
-    const result = await db.query(
+    const result = await pool.query(
       "SELECT * FROM tasks WHERE is_completed = $1 AND user_id = $2",
       [true, req.user.id]
     );
@@ -262,7 +262,7 @@ app.patch("/done", async (req, res) => {
   if (!id) {
     return res.status(400).send("ID is required");
   }
-  await db.query(
+  await pool.query(
     "UPDATE tasks SET is_completed = $1 WHERE id = $2 AND user_id = $3",
     [true, id, req.user.id],
     (error, results) => {
@@ -281,7 +281,7 @@ app.delete("/completed/delete", async (req, res) => {
   if (!id) {
     return res.status(400).send("ID is required");
   }
-  await db.query(
+  await pool.query(
     "DELETE FROM tasks WHERE id = $1 AND user_id = $2",
     [id, req.user.id],
     (error, results) => {
@@ -302,7 +302,7 @@ app.patch("/edit", async (req, res) => {
     return res.status(400).send("ID, title, and content are required");
   }
   try {
-    await db.query(
+    await pool.query(
       "UPDATE tasks SET title = $1, content = $2 WHERE id = $3 AND user_id = $4",
       [title, content, id, req.user.id],
       (error, results) => {
@@ -326,8 +326,3 @@ app.patch("/edit", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-/*
-
-
-*/
