@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-import pg from "pg";
+import { pool } from "pg";
 import passport from "passport";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -12,8 +12,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const { Client } = pg;
-const db = new Client({
+const pool = new pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
@@ -42,15 +41,14 @@ app.use(
   })
 );
 app.use(express.static("public"));
+const pgSession = connectPgSimple(session);
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
 
 app.use(
   session({
-    store: new (pgSession(session))({
-      pool: yourPgPool,
-    }),
+    store: new pgSession({ pool }), // ✅ CORRECT
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
