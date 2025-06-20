@@ -1,7 +1,8 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-import { Pool } from "pg";
+import pkg from "pg";
+const { Pool } = pkg;
 import passport from "passport";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
