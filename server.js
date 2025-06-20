@@ -4,7 +4,7 @@ import bodyParser from "body-parser";
 import { Pool } from "pg";
 import passport from "passport";
 import session from "express-session";
-import pgSession from "connect-pg-simple";
+import connectPgSimple from "connect-pg-simple";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
 dotenv.config();
@@ -22,33 +22,36 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
 });
-pool.connect((error) => {
-  if (error) {
-    console.log(error);
-  } else {
+
+pool
+  .connect()
+  .then((client) => {
     console.log("Connected to the database successfully");
-  }
-});
+    client.release();
+  })
+  .catch((err) => {
+    console.error("Database connection error:", err.stack);
+  });
 
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+
 app.use(
   cors({
-    origin: "https://advanced-todo-frontend.vercel.app/",
+    origin: "https://advanced-todo-frontend.vercel.app", // removed trailing slash
     methods: ["GET", "POST", "PATCH", "DELETE"],
     credentials: true,
   })
 );
-app.use(express.static("public"));
-const pgSession = connectPgSimple(session);
 
-/////////////////////////////////////////////////
-/////////////////////////////////////////////////
+app.use(express.static("public"));
+
+const pgSession = connectPgSimple(session);
 
 app.use(
   session({
-    store: new pgSession({ pool }), // ✅ CORRECT
+    store: new pgSession({ pool }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -63,6 +66,7 @@ app.use(
 
 app.use(passport.initialize());
 app.use(passport.session());
+
 app.set("view engine", "ejs");
 
 passport.use(
@@ -75,24 +79,16 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // Attempt to find user by googleId
         const result = await pool.query(
           "SELECT * FROM users WHERE google_id = $1",
           [profile.id]
         );
-        if (result.rows.length === 0) {
-          console.log(
-            "No user found with this Google ID, creating a new user."
-          );
-          res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
-        }
 
         let user;
 
         if (result.rows.length > 0) {
-          user = result.rows[0]; // Found existing user
+          user = result.rows[0];
         } else {
-          // Create new user
           const insertResult = await pool.query(
             "INSERT INTO users (google_id, email, name) VALUES ($1, $2, $3) RETURNING *",
             [
@@ -106,7 +102,6 @@ passport.use(
 
         return done(null, user);
       } catch (err) {
-        res.redirect("https://advanced-todo-frontend.vercel.app/");
         return done(err);
       }
     }
@@ -116,6 +111,7 @@ passport.use(
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
+
 passport.deserializeUser(async (id, done) => {
   try {
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
@@ -125,8 +121,6 @@ passport.deserializeUser(async (id, done) => {
     done(err);
   }
 });
-
-/// Middleware to ensure user is authenticated
 
 const ensureAuthenticated = (req, res, next) => {
   if (req.isAuthenticated()) {
@@ -144,8 +138,6 @@ const ensureAuthenticated = (req, res, next) => {
     : res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
 };
 
-/////////////////////////////////////////////////
-
 app.get(
   "/auth/google",
   passport.authenticate("google", {
@@ -158,8 +150,7 @@ app.get(
 app.get(
   "/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/signIn" }),
-  function (req, res) {
-    // Successful authentication, redirect to home page.
+  (req, res) => {
     res.redirect("https://advanced-todo-frontend.vercel.app/");
   }
 );
@@ -177,7 +168,7 @@ app.get("/signOut", (req, res) => {
         return res.status(500).send("Could not destroy session");
       }
 
-      res.clearCookie("connect.sid"); // 👈 Clear session cookie explicitly
+      res.clearCookie("connect.sid");
       res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
     });
   });
@@ -187,11 +178,8 @@ app.get("/signIn", (req, res) => {
   if (req.isAuthenticated()) {
     return res.redirect("https://advanced-todo-frontend.vercel.app/");
   }
-  res.render("https://advanced-todo-frontend.vercel.app/signIn");
+  res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
 });
-
-/////////////////////////////////////////////////
-/////////////////////////////////////////////////
 
 app.get("/", ensureAuthenticated, async (req, res) => {
   try {
@@ -199,7 +187,6 @@ app.get("/", ensureAuthenticated, async (req, res) => {
       "SELECT * FROM tasks WHERE user_id = $1 AND is_completed = $2",
       [req.user.id, false]
     );
-
     const tasks = result.rows;
     if (tasks.length === 0) {
       return res.status(404).json({ message: "No tasks found" });
@@ -224,23 +211,21 @@ app.get("/user", ensureAuthenticated, async (req, res) => {
   }
 });
 
-app.post("/add", ensureAuthenticated, (req, res) => {
+app.post("/add", ensureAuthenticated, async (req, res) => {
   const { title, content } = req.body;
   if (!title || !content) {
     return res.status(400).send("Title and content are required");
   }
-  pool.query(
-    "INSERT INTO tasks (title,content,user_id) VALUES ($1, $2, $3)",
-    [title, content, req.user.id],
-    (error, results) => {
-      if (error) {
-        console.error("Error executing query", error.stack);
-        res.status(500).send("Error executing query");
-      } else {
-        res.status(201).send("Task added successfully");
-      }
-    }
-  );
+  try {
+    await pool.query(
+      "INSERT INTO tasks (title, content, user_id) VALUES ($1, $2, $3)",
+      [title, content, req.user.id]
+    );
+    res.status(201).send("Task added successfully");
+  } catch (error) {
+    console.error("Error executing query", error.stack);
+    res.status(500).send("Error executing query");
+  }
 });
 
 app.get("/completed", ensureAuthenticated, async (req, res) => {
@@ -249,76 +234,67 @@ app.get("/completed", ensureAuthenticated, async (req, res) => {
       "SELECT * FROM tasks WHERE is_completed = $1 AND user_id = $2",
       [true, req.user.id]
     );
-    const compTasks = result.rows;
-    res.json(compTasks);
+    res.json(result.rows);
   } catch (error) {
     console.error("Error executing query", error.stack);
     res.status(500).send("Error executing query");
   }
 });
 
-app.patch("/done", async (req, res) => {
+app.patch("/done", ensureAuthenticated, async (req, res) => {
   const { id } = req.body;
-  if (!id) {
-    return res.status(400).send("ID is required");
-  }
-  await pool.query(
-    "UPDATE tasks SET is_completed = $1 WHERE id = $2 AND user_id = $3",
-    [true, id, req.user.id],
-    (error, results) => {
-      if (error) {
-        console.error("Error executing query", error.stack);
-        res.status(500).send("Error executing query");
-      } else {
-        res.status(200).send("Task marked as completed");
-      }
+  if (!id) return res.status(400).send("ID is required");
+
+  try {
+    const result = await pool.query(
+      "UPDATE tasks SET is_completed = $1 WHERE id = $2 AND user_id = $3",
+      [true, id, req.user.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).send("Task not found");
     }
-  );
+    res.status(200).send("Task marked as completed");
+  } catch (error) {
+    console.error("Error executing query", error.stack);
+    res.status(500).send("Error executing query");
+  }
 });
 
-app.delete("/completed/delete", async (req, res) => {
+app.delete("/completed/delete", ensureAuthenticated, async (req, res) => {
   const { id } = req.body;
-  if (!id) {
-    return res.status(400).send("ID is required");
-  }
-  await pool.query(
-    "DELETE FROM tasks WHERE id = $1 AND user_id = $2",
-    [id, req.user.id],
-    (error, results) => {
-      if (error) {
-        console.error("Error executing query", error.stack);
-        res.status(500).send("Error executing query");
-      } else {
-        res.status(200).send("Task deleted successfully");
-      }
+  if (!id) return res.status(400).send("ID is required");
+
+  try {
+    const result = await pool.query(
+      "DELETE FROM tasks WHERE id = $1 AND user_id = $2",
+      [id, req.user.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).send("Task not found");
     }
-  );
+    res.status(200).send("Task deleted successfully");
+  } catch (error) {
+    console.error("Error executing query", error.stack);
+    res.status(500).send("Error executing query");
+  }
 });
 
-//edit the task
-app.patch("/edit", async (req, res) => {
+app.patch("/edit", ensureAuthenticated, async (req, res) => {
   const { id, title, content } = req.body;
   if (!id || !title || !content) {
     return res.status(400).send("ID, title, and content are required");
   }
   try {
-    await pool.query(
+    const result = await pool.query(
       "UPDATE tasks SET title = $1, content = $2 WHERE id = $3 AND user_id = $4",
-      [title, content, id, req.user.id],
-      (error, results) => {
-        if (results.rows.length === 0) {
-          return res.status(404).json({ message: "Task not found" });
-        }
-        if (error) {
-          console.error("Error executing query", error.stack);
-          res.status(500).send("Error executing query");
-        } else {
-          res.status(200).send("Task updated successfully");
-        }
-      }
+      [title, content, id, req.user.id]
     );
-  } catch {
-    console.error("Error updating task:", err);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    res.status(200).send("Task updated successfully");
+  } catch (error) {
+    console.error("Error executing query", error.stack);
     res.status(500).json({ message: "Server error" });
   }
 });
