@@ -4,6 +4,7 @@ import bodyParser from "body-parser";
 import pg from "pg";
 import passport from "passport";
 import session from "express-session";
+import pgSession from "connect-pg-simple";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
 dotenv.config();
@@ -47,13 +48,17 @@ app.use(express.static("public"));
 
 app.use(
   session({
-    secret: "I am Abdulwedud",
+    store: new (pgSession(session))({
+      pool: yourPgPool,
+    }),
+    secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
     cookie: {
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-      secure: false, // Set to true if using HTTPS
+      sameSite: "none",
+      secure: true,
       httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
     },
   })
 );
