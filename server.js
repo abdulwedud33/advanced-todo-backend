@@ -32,7 +32,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: "https://advanced-todo-frontend.vercel.app/",
     methods: ["GET", "POST", "PATCH", "DELETE"],
     credentials: true,
   })
@@ -74,6 +74,12 @@ passport.use(
           "SELECT * FROM users WHERE google_id = $1",
           [profile.id]
         );
+        if (result.rows.length === 0) {
+          console.log(
+            "No user found with this Google ID, creating a new user."
+          );
+          res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
+        }
 
         let user;
 
@@ -94,7 +100,7 @@ passport.use(
 
         return done(null, user);
       } catch (err) {
-        res.redirect("http://localhost:3000");
+        res.redirect("https://advanced-todo-frontend.vercel.app/");
         return done(err);
       }
     }
@@ -122,14 +128,14 @@ const ensureAuthenticated = (req, res, next) => {
       req.logout();
       return req.accepts("json")
         ? res.status(403).json({ error: "Invalid session" })
-        : res.redirect("http://localhost:3000/signIn");
+        : res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
     }
     return next();
   }
 
   return req.accepts("json")
     ? res.status(401).json({ error: "Login required" })
-    : res.redirect("http://localhost:3000/signIn");
+    : res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
 };
 
 /////////////////////////////////////////////////
@@ -148,7 +154,7 @@ app.get(
   passport.authenticate("google", { failureRedirect: "/signIn" }),
   function (req, res) {
     // Successful authentication, redirect to home page.
-    res.redirect("http://localhost:3000");
+    res.redirect("https://advanced-todo-frontend.vercel.app/");
   }
 );
 
@@ -166,16 +172,16 @@ app.get("/signOut", (req, res) => {
       }
 
       res.clearCookie("connect.sid"); // 👈 Clear session cookie explicitly
-      res.redirect("http://localhost:3000/signIn");
+      res.redirect("https://advanced-todo-frontend.vercel.app/signIn");
     });
   });
 });
 
 app.get("/signIn", (req, res) => {
   if (req.isAuthenticated()) {
-    return res.redirect("http://localhost:3000");
+    return res.redirect("https://advanced-todo-frontend.vercel.app/");
   }
-  res.render("http://localhost:3000/signIn");
+  res.render("https://advanced-todo-frontend.vercel.app/signIn");
 });
 
 /////////////////////////////////////////////////
