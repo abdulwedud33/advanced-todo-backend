@@ -50,6 +50,7 @@ app.use(express.static("public"));
 
 const pgSession = connectPgSimple(session);
 
+app.set("trust proxy", 1); // Trust first proxy for secure cookies in production
 app.use(
   session({
     store: new pgSession({ pool }),
