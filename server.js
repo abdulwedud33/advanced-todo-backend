@@ -200,6 +200,9 @@ app.get("/", ensureAuthenticated, async (req, res) => {
 });
 
 app.get("/user", ensureAuthenticated, async (req, res) => {
+  console.log("Session:", req.session);
+  console.log("User:", req.user);
+  console.log("isAuthenticated:", req.isAuthenticated?.());
   try {
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [
       req.user.id,
